@@ -1,0 +1,45 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend_rebuild/dist/
+frontend_rebuild/*.tsbuildinfo
+
+# Runtime / local data
+runtime/*.log
+runtime/*.pid
+runtime/backend-data*/
+runtime/*.out.log
+runtime/*.err.log
+runtime/backend.env
+runtime/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+
+# Legacy / local backup folders (not part of release artifact)
+frontend/
+frontend_before_cpamc_swap_20260225/
+frontend_legacy_backup/
+backend/.venv/

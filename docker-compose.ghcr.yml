@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  ollama-search-gateway:
+    image: ${GHCR_IMAGE:-ghcr.io/haruka041/ollama-search-gateway:latest}
+    container_name: ollama-search-gateway
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_PORT:-8080}:8080"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PORT: 8080
+      STATE_DIR: /data
+
+      # Gateway upstream
+      OLLAMA_NODES: ${OLLAMA_NODES:-https://ollama.com}
+      HEALTH_PATH: ${HEALTH_PATH:-/api/tags}
+      WEB_SEARCH_PATH: ${WEB_SEARCH_PATH:-/api/web_search}
+      CHAT_PATH: ${CHAT_PATH:-/api/chat}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-30}
+      RETRY_ATTEMPTS: ${RETRY_ATTEMPTS:-3}
+      NODE_FAILURE_THRESHOLD: ${NODE_FAILURE_THRESHOLD:-3}
+      KEY_FAILURE_THRESHOLD: ${KEY_FAILURE_THRESHOLD:-2}
+      KEY_COOLDOWN_SECONDS: ${KEY_COOLDOWN_SECONDS:-60}
+      HEALTH_INTERVAL_SECONDS: ${HEALTH_INTERVAL_SECONDS:-15}
+      ALLOW_NO_API_KEY: ${ALLOW_NO_API_KEY:-false}
+
+      # Admin login (change in production)
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-sha256$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9}
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-secret}
+
+      # Optional Searx compatibility Basic Auth
+      SEARX_COMPAT_USERNAME: ${SEARX_COMPAT_USERNAME:-}
+      SEARX_COMPAT_PASSWORD_HASH: ${SEARX_COMPAT_PASSWORD_HASH:-}
+      SEARX_COMPAT_STORE_FILE: ${SEARX_COMPAT_STORE_FILE:-searx_compat.json}
+    volumes:
+      - ./runtime/backend-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+

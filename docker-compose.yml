@@ -1,0 +1,82 @@
+version: "3.9"
+
+name: ${COMPOSE_PROJECT_NAME:-ollama-web-search}
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-ollama-web-search}-backend
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      OLLAMA_NODES: ${OLLAMA_NODES:-https://ollama.com}
+      LB_STRATEGY: ${LB_STRATEGY:-round-robin}
+      HEALTH_PATH: ${HEALTH_PATH:-/api/tags}
+      WEB_SEARCH_PATH: ${WEB_SEARCH_PATH:-/api/web_search}
+      HEALTH_INTERVAL_SECONDS: ${HEALTH_INTERVAL_SECONDS:-15}
+      NODE_FAILURE_THRESHOLD: ${NODE_FAILURE_THRESHOLD:-3}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-30}
+      RETRY_ATTEMPTS: ${RETRY_ATTEMPTS:-3}
+      ALLOW_NO_API_KEY: ${ALLOW_NO_API_KEY:-false}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-sha256$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9}
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-secret}
+      CHAT_PATH: ${CHAT_PATH:-/api/chat}
+      SEARX_COMPAT_USERNAME: ${SEARX_COMPAT_USERNAME:-}
+      SEARX_COMPAT_PASSWORD_HASH: ${SEARX_COMPAT_PASSWORD_HASH:-}
+      SEARX_COMPAT_STORE_FILE: ${SEARX_COMPAT_STORE_FILE:-searx_compat.json}
+      KEY_FAILURE_THRESHOLD: ${KEY_FAILURE_THRESHOLD:-2}
+      KEY_COOLDOWN_SECONDS: ${KEY_COOLDOWN_SECONDS:-60}
+      STATE_DIR: ${STATE_DIR:-/data}
+      KEYS_STORE_FILE: ${KEYS_STORE_FILE:-keys.json}
+      NODES_STORE_FILE: ${NODES_STORE_FILE:-nodes.json}
+      LOG_BUFFER_SIZE: ${LOG_BUFFER_SIZE:-300}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+      UVICORN_LOG_LEVEL: ${UVICORN_LOG_LEVEL:-info}
+    command: >
+      sh -c "uvicorn main:app --host 0.0.0.0 --port 8000
+      --workers ${UVICORN_WORKERS:-1}
+      --log-level ${UVICORN_LOG_LEVEL:-info}"
+    restart: unless-stopped
+    volumes:
+      - backend-data:${STATE_DIR:-/data}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend_rebuild/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: ${COMPOSE_PROJECT_NAME:-ollama-web-search}-frontend
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-net
+
+volumes:
+  backend-data:
+
+networks:
+  app-net:
+    driver: bridge

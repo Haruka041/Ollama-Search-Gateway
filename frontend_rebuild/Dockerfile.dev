@@ -1,0 +1,11 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY frontend_rebuild/package*.json ./
+RUN npm install
+
+COPY frontend_rebuild/ ./
+
+EXPOSE 3000
+
