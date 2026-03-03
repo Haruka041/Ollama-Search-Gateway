@@ -1861,6 +1861,8 @@ def _normalize_searx_result_item(item: Any, idx: int) -> dict[str, Any] | None:
             "title": f"Result {idx}",
             "url": "about:blank",
             "content": text,
+            "engine": "gateway",
+            "template": "default.html",
         }
     if not isinstance(item, dict):
         return None
@@ -1872,15 +1874,16 @@ def _normalize_searx_result_item(item: Any, idx: int) -> dict[str, Any] | None:
     if not title and not url and not content:
         return None
 
+    engine = _pick_first_text(item, ["engine", "provider", "source"]) or "gateway"
+    template = _pick_first_text(item, ["template"]) or "default.html"
+
     normalized: dict[str, Any] = {
         "title": title or f"Result {idx}",
         "url": url or "about:blank",
         "content": content or "",
+        "engine": engine,
+        "template": template,
     }
-
-    engine = _pick_first_text(item, ["engine", "provider", "source"])
-    if engine:
-        normalized["engine"] = engine
 
     category = _pick_first_text(item, ["category"])
     if category:
@@ -1933,6 +1936,8 @@ def _build_searxng_compatible_response(raw: Any, query: str) -> dict[str, Any]:
                     "title": "Answer",
                     "url": "about:blank",
                     "content": fallback,
+                    "engine": "gateway",
+                    "template": "default.html",
                 }
             )
 
