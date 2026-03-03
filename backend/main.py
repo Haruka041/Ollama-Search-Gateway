@@ -95,10 +95,12 @@ class Settings(BaseModel):
     allow_no_api_key: bool = _parse_bool(os.getenv("ALLOW_NO_API_KEY"), default=False)
 
     admin_username: str = (os.getenv("ADMIN_USERNAME", "admin") or "admin").strip()
+    admin_password: str = (os.getenv("ADMIN_PASSWORD", "") or "")
     admin_password_hash: str = (os.getenv("ADMIN_PASSWORD_HASH", "") or "").strip()
     jwt_secret: str = (os.getenv("JWT_SECRET", "") or "").strip()
     jwt_expire_minutes: int = max(1, int(os.getenv("JWT_EXPIRE_MINUTES", "120")))
     searx_compat_username: str = (os.getenv("SEARX_COMPAT_USERNAME", "") or "").strip()
+    searx_compat_password: str = (os.getenv("SEARX_COMPAT_PASSWORD", "") or "")
     searx_compat_password_hash: str = (os.getenv("SEARX_COMPAT_PASSWORD_HASH", "") or "").strip()
 
     state_dir: str = (os.getenv("STATE_DIR", "/data") or "/data").strip()
@@ -683,12 +685,14 @@ class AdminClaims:
 
 
 def _validate_security_settings() -> None:
-    if not SETTINGS.admin_password_hash:
-        raise RuntimeError("ADMIN_PASSWORD_HASH is required")
+    if not SETTINGS.admin_password_hash and not SETTINGS.admin_password:
+        raise RuntimeError("ADMIN_PASSWORD_HASH or ADMIN_PASSWORD is required")
     if not SETTINGS.jwt_secret:
         raise RuntimeError("JWT_SECRET is required")
-    if SETTINGS.searx_compat_username and not SETTINGS.searx_compat_password_hash:
-        raise RuntimeError("SEARX_COMPAT_PASSWORD_HASH is required when SEARX_COMPAT_USERNAME is set")
+    if SETTINGS.searx_compat_username and not SETTINGS.searx_compat_password_hash and not SETTINGS.searx_compat_password:
+        raise RuntimeError(
+            "SEARX_COMPAT_PASSWORD_HASH or SEARX_COMPAT_PASSWORD is required when SEARX_COMPAT_USERNAME is set"
+        )
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -779,21 +783,30 @@ def _hash_password_sha256(password_plain: str) -> str:
     return f"sha256${digest}"
 
 
-async def _get_searx_compat_credentials() -> tuple[str, str]:
+def _verify_password_input(password_plain: str, password_hash: str, password_raw: str) -> bool:
+    # Prefer hash verification when provided.
+    if (password_hash or "").strip():
+        return _verify_password_hash(password_plain, password_hash)
+    return hmac.compare_digest(password_plain or "", password_raw or "")
+
+
+async def _get_searx_compat_credentials() -> tuple[str, str, str]:
     async with searx_compat_lock:
         username = str(searx_compat_state.get("username") or "").strip()
         password_hash = str(searx_compat_state.get("password_hash") or "").strip()
-    return username, password_hash
+        password_raw = str(searx_compat_state.get("password") or "")
+    return username, password_hash, password_raw
 
 
-async def _set_searx_compat_credentials(username: str, password_hash: str) -> None:
+async def _set_searx_compat_credentials(username: str, password_hash: str, password_raw: str = "") -> None:
     async with searx_compat_lock:
         searx_compat_state["username"] = (username or "").strip()
         searx_compat_state["password_hash"] = (password_hash or "").strip()
+        searx_compat_state["password"] = password_raw or ""
 
 
 async def _persist_searx_compat_settings() -> None:
-    username, password_hash = await _get_searx_compat_credentials()
+    username, password_hash, _password_raw = await _get_searx_compat_credentials()
     await _save_json(
         SETTINGS.searx_compat_store_path,
         {
@@ -863,7 +876,7 @@ def _decode_basic_auth(auth_header: str) -> tuple[str, str] | None:
 
 
 async def require_searx_compat_auth(request: Request) -> None:
-    username_cfg, password_hash_cfg = await _get_searx_compat_credentials()
+    username_cfg, password_hash_cfg, password_raw_cfg = await _get_searx_compat_credentials()
 
     # If no dedicated credentials are configured, keep compatibility endpoint open.
     if not username_cfg:
@@ -880,7 +893,7 @@ async def require_searx_compat_auth(request: Request) -> None:
 
     username, password = decoded
     username_ok = hmac.compare_digest(username, username_cfg)
-    password_ok = _verify_password_hash(password, password_hash_cfg)
+    password_ok = _verify_password_input(password, password_hash_cfg, password_raw_cfg)
     if not username_ok or not password_ok:
         raise HTTPException(
             status_code=401,
@@ -1006,6 +1019,7 @@ searx_compat_lock = asyncio.Lock()
 searx_compat_state: dict[str, str] = {
     "username": SETTINGS.searx_compat_username,
     "password_hash": SETTINGS.searx_compat_password_hash,
+    "password": SETTINGS.searx_compat_password,
 }
 
 # =============================================================================
@@ -1085,7 +1099,7 @@ async def _load_state() -> None:
             password_hash = str(searx_rows.get("password_hash") or "").strip()
             if username and not password_hash:
                 raise RuntimeError("invalid searx_compat settings: password_hash required when username is set")
-            await _set_searx_compat_credentials(username, password_hash)
+            await _set_searx_compat_credentials(username, password_hash, "")
 
 
 async def _health_loop(stop_event: asyncio.Event) -> None:
@@ -1176,20 +1190,20 @@ async def logs_api(limit: int = Query(default=100, ge=1, le=500), _admin: AdminC
 # =========================
 
 
-def _build_searx_compat_settings_payload(username: str, password_hash: str) -> dict[str, Any]:
-    enabled = bool(username and password_hash)
+def _build_searx_compat_settings_payload(username: str, password_hash: str, password_raw: str = "") -> dict[str, Any]:
+    enabled = bool(username and (password_hash or password_raw))
     return {
         "enabled": enabled,
         "username": username,
-        "has_password": bool(password_hash),
+        "has_password": bool(password_hash or password_raw),
         "search_path": "/search",
     }
 
 
 @app.get("/api/settings/searx-compat")
 async def get_searx_compat_settings(_admin: AdminClaims = Depends(require_admin)) -> dict[str, Any]:
-    username, password_hash = await _get_searx_compat_credentials()
-    return _build_searx_compat_settings_payload(username, password_hash)
+    username, password_hash, password_raw = await _get_searx_compat_credentials()
+    return _build_searx_compat_settings_payload(username, password_hash, password_raw)
 
 
 @app.put("/api/settings/searx-compat")
@@ -1197,7 +1211,7 @@ async def update_searx_compat_settings(
     req: SearxCompatSettingsUpdateRequest,
     _admin: AdminClaims = Depends(require_admin),
 ) -> dict[str, Any]:
-    current_username, current_password_hash = await _get_searx_compat_credentials()
+    current_username, current_password_hash, current_password_raw = await _get_searx_compat_credentials()
 
     enabled = bool(req.enabled)
     username = (req.username or "").strip()
@@ -1206,6 +1220,7 @@ async def update_searx_compat_settings(
     if not enabled:
         next_username = ""
         next_password_hash = ""
+        next_password_raw = ""
     else:
         if not username:
             raise AppError(400, "username_required", "username_required")
@@ -1214,22 +1229,24 @@ async def update_searx_compat_settings(
 
         next_username = username
         next_password_hash = current_password_hash
+        next_password_raw = current_password_raw
 
         if password:
             next_password_hash = _hash_password_sha256(password)
+            next_password_raw = ""
 
-        if not next_password_hash:
+        if not next_password_hash and not next_password_raw:
             raise AppError(400, "password_required", "password_required")
 
-    await _set_searx_compat_credentials(next_username, next_password_hash)
+    await _set_searx_compat_credentials(next_username, next_password_hash, next_password_raw)
     await _persist_searx_compat_settings()
 
     await event_log.add(
         "INFO",
         "searx_compat_update",
-        f"enabled={bool(next_username and next_password_hash)}, user_changed={current_username != next_username}",
+        f"enabled={bool(next_username and (next_password_hash or next_password_raw))}, user_changed={current_username != next_username}",
     )
-    return _build_searx_compat_settings_payload(next_username, next_password_hash)
+    return _build_searx_compat_settings_payload(next_username, next_password_hash, next_password_raw)
 
 
 # =========================
@@ -1240,7 +1257,11 @@ async def update_searx_compat_settings(
 @app.post("/api/auth/login")
 async def auth_login(req: LoginRequest, request: Request) -> dict[str, Any]:
     username = (req.username or "").strip()
-    if username != SETTINGS.admin_username or not _verify_password_hash(req.password, SETTINGS.admin_password_hash):
+    if username != SETTINGS.admin_username or not _verify_password_input(
+        req.password,
+        SETTINGS.admin_password_hash,
+        SETTINGS.admin_password,
+    ):
         await event_log.add("WARN", "auth_login_failed", f"path={request.url.path}, user={username}")
         raise AppError(401, "invalid_credentials", "invalid username or password")
 

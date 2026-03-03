@@ -26,6 +26,7 @@ export NODE_FAILURE_THRESHOLD="2"
 export HEALTH_INTERVAL_SECONDS="15"
 export ALLOW_NO_API_KEY="0"
 export SEARX_COMPAT_USERNAME="searx-user"
+export SEARX_COMPAT_PASSWORD="change-me"
 export SEARX_COMPAT_PASSWORD_HASH="sha256$<your_password_sha256_hex>"
 
 uvicorn main:app --host 0.0.0.0 --port 8000
@@ -113,5 +114,5 @@ curl -s "http://127.0.0.1:8000/search?q=llm&format=json" \
 ## 说明
 - 当前实现为纯内存状态：服务重启后 key 列表、统计、节点健康状态会重置。
 - `/api/search` 对请求体采用透传策略（除 `api_key_id` 和 `timeout_seconds` 外），兼容 Ollama Web Search 的 `query/max_results/stream` 参数扩展。
-- `/search` 的 Basic Auth 为可选。未设置 `SEARX_COMPAT_USERNAME` 时保持开放；设置后必须同时配置 `SEARX_COMPAT_PASSWORD_HASH`。
+- `/search` 的 Basic Auth 为可选。未设置 `SEARX_COMPAT_USERNAME` 时保持开放；设置后需配置 `SEARX_COMPAT_PASSWORD` 或 `SEARX_COMPAT_PASSWORD_HASH`（若两者都设置，优先哈希）。
 - 管理台可通过 `PUT /api/settings/searx-compat` 在线修改 Searx 兼容鉴权（仅保存哈希，不保存明文密码），配置持久化到 `${STATE_DIR}/${SEARX_COMPAT_STORE_FILE:-searx_compat.json}`。

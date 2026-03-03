@@ -16,7 +16,7 @@ Ollama Search Gateway (OSG) 是一个 FastAPI 网关，提供：
 docker run -d --name ollama-search-gateway \
   -p 8080:8080 \
   -e ADMIN_USERNAME=admin \
-  -e ADMIN_PASSWORD_HASH='sha256$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' \
+  -e ADMIN_PASSWORD='admin123' \
   -e JWT_SECRET='replace-with-a-long-random-secret' \
   -e OLLAMA_NODES='https://ollama.com' \
   -v ./runtime/backend-data:/data \
@@ -29,6 +29,7 @@ docker run -d --name ollama-search-gateway \
 - 健康检查：`http://<你的IP>:8080/health`
 
 > 服务监听 `0.0.0.0:8080`，公网访问还需要放行主机/云防火墙端口。
+> 后端同时支持 `ADMIN_PASSWORD`（明文）和 `ADMIN_PASSWORD_HASH`（哈希），若两者都设置则优先使用哈希。
 
 ## 2) Docker Compose（使用 GHCR latest 镜像）
 
@@ -46,7 +47,7 @@ docker compose -f docker-compose.ghcr.yml up -d
 - 用户名：`admin`
 - 默认密码：`admin123`
 
-> 首次部署后请立即修改密码哈希和 `JWT_SECRET`。
+> 首次部署后请立即修改密码和 `JWT_SECRET`。
 
 ## 常用配置
 
@@ -58,9 +59,11 @@ docker compose -f docker-compose.ghcr.yml up -d
 | `CHAT_PATH` | 聊天上游路径 | `/api/chat` |
 | `ALLOW_NO_API_KEY` | 是否允许无 key 请求 | `false` |
 | `ADMIN_USERNAME` | 管理员用户名 | `admin` |
+| `ADMIN_PASSWORD` | 管理员明文密码（简单模式） | `admin123` |
 | `ADMIN_PASSWORD_HASH` | 管理员密码哈希 | `sha256$...` |
 | `JWT_SECRET` | JWT 签名密钥 | `replace-with-a-long-random-secret` |
 | `SEARX_COMPAT_USERNAME` | `/search` 的 Basic Auth 用户名（可选） | 空 |
+| `SEARX_COMPAT_PASSWORD` | `/search` 的 Basic Auth 明文密码（可选） | 空 |
 | `SEARX_COMPAT_PASSWORD_HASH` | `/search` 的 Basic Auth 密码哈希（可选） | 空 |
 | `SEARX_COMPAT_STORE_FILE` | Searx 兼容设置持久化文件 | `searx_compat.json` |
 
@@ -113,4 +116,3 @@ PY
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build
 ```
-
