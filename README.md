@@ -30,6 +30,7 @@ docker run -d --name ollama-search-gateway \
 
 > 服务监听 `0.0.0.0:8080`，公网访问还需要放行主机/云防火墙端口。
 > 后端同时支持 `ADMIN_PASSWORD`（明文）和 `ADMIN_PASSWORD_HASH`（哈希），若两者都设置则优先使用哈希。
+> 如果你使用的是 Nginx 前端（`docker-compose.yml` / `docker-compose.dev.yml`），`/search` 也已代理到后端，移动端无需再额外配置代理。
 
 ## 2) Docker Compose（使用 GHCR latest 镜像）
 
